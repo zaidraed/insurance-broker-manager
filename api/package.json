@@ -1,0 +1,64 @@
+{
+  "name": "broker-seguros-api",
+  "version": "0.1.0",
+  "description": "Backend NestJS para gestión de pólizas de seguros",
+  "author": "Zaid Raed",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "22.x"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "scripts": {
+    "build": "prisma generate && nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"{src,test}/**/*.ts\" --fix",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "prisma:seed": "prisma db seed",
+    "prisma:studio": "prisma studio",
+    "import:basededatos": "ts-node src/modules/import/cli/import-basededatos.cli.ts",
+    "import:perfil": "ts-node src/modules/import/cli/import-perfil.cli.ts",
+    "import:cuotas": "ts-node src/modules/import/cli/import-cuotas.cli.ts",
+    "backfill:ramos": "ts-node src/modules/import/cli/backfill-ramos.cli.ts",
+    "import:deuda": "ts-node src/modules/import/cli/import-deuda.cli.ts",
+    "merge:companias-dup": "ts-node src/modules/import/cli/merge-companias-dup.cli.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.0.0",
+    "@nestjs/swagger": "^11.0.0",
+    "@prisma/client": "^6.5.0",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "date-fns": "^4.1.0",
+    "exceljs": "^4.4.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "prisma": "^6.5.0",
+    "source-map-support": "^0.5.21",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3"
+  }
+}

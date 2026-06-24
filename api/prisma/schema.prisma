@@ -1,0 +1,325 @@
+// Prisma schema — Broker Seguros API
+// Gestión de pólizas de seguros.
+
+generator client {
+  provider      = "prisma-client-js"
+  // native = entorno local; debian-openssl-3.0.x = Railway (Linux).
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum EstadoVigencia {
+  VIGENTE
+  A_VENCER
+  VENCIDO
+}
+
+enum EstadoPago {
+  PAGADA
+  IMPAGA
+  PARCIAL
+  NA
+}
+
+enum CanalContacto {
+  TELEFONO
+  WHATSAPP
+  MAIL
+  OTRO
+}
+
+enum TipoSeguimiento {
+  RENOVACION
+  ENDOSO
+  COBRANZA
+  SINIESTRO
+  NOTA
+}
+
+enum RolUsuario {
+  ADMIN
+  OPERADOR
+}
+
+// ---------------------------------------------------------------------------
+// COMPAÑÍAS E IMPORTACIÓN
+// ---------------------------------------------------------------------------
+
+model Compania {
+  id     String   @id @default(cuid())
+  nombre String   @unique
+  alias  String[] // para matchear "ASEGURADORA H ", cuentas Aseguradora F, etc.
+
+  importProfiles CompaniaImportProfile[]
+  ramoMappings   RamoMapping[]
+  polizas        Poliza[]
+
+  @@map("compania")
+}
+
+model CompaniaImportProfile {
+  id               String  @id @default(cuid())
+  companiaId       String
+  identificador    String
+  palabraClaveFila String
+  colPoliza        String
+  colTomador       String
+  colRamo          String?
+  colInicioVig     String
+  colFinVig        String?
+  colObservaciones String?
+  colBienAsegurado String?
+  colFechaFacturado String?
+  colMedioPago      String?
+
+  compania Compania @relation(fields: [companiaId], references: [id], onDelete: Cascade)
+
+  @@index([companiaId])
+  @@map("compania_import_profile")
+}
+
+// ---------------------------------------------------------------------------
+// ORGANISMOS, DIRECCIONES Y CONTACTOS
+// ---------------------------------------------------------------------------
+
+model Organismo {
+  id     String @id @default(cuid())
+  codigo String @unique
+  nombre String
+
+  direcciones  Direccion[]
+  contactos    Contacto[]
+  polizas      Poliza[]
+  seguimientos Seguimiento[]
+
+  @@map("organismo")
+}
+
+model Direccion {
+  id          String @id @default(cuid())
+  organismoId String
+  nombre      String
+
+  organismo Organismo  @relation(fields: [organismoId], references: [id], onDelete: Cascade)
+  contactos Contacto[]
+  polizas   Poliza[]
+
+  @@index([organismoId])
+  @@map("direccion")
+}
+
+model Contacto {
+  id          String  @id @default(cuid())
+  organismoId String?
+  direccionId String?
+  nombre      String
+  telefono    String?
+  email       String?
+  rol         String?
+
+  organismo Organismo? @relation(fields: [organismoId], references: [id], onDelete: SetNull)
+  direccion Direccion? @relation(fields: [direccionId], references: [id], onDelete: SetNull)
+
+  @@index([organismoId])
+  @@index([direccionId])
+  @@map("contacto")
+}
+
+// ---------------------------------------------------------------------------
+// RAMOS Y MAPEOS
+// ---------------------------------------------------------------------------
+
+model Ramo {
+  id     String @id @default(cuid())
+  nombre String @unique
+
+  ramoMappings RamoMapping[]
+  polizas      Poliza[]
+
+  @@map("ramo")
+}
+
+model RamoMapping {
+  id           String  @id @default(cuid())
+  companiaId   String?
+  codigoOrigen String? // código numérico crudo
+  textoOrigen  String? // texto crudo del ramo
+  ramoId       String
+
+  compania Compania? @relation(fields: [companiaId], references: [id], onDelete: SetNull)
+  ramo     Ramo      @relation(fields: [ramoId], references: [id], onDelete: Cascade)
+
+  @@index([companiaId])
+  @@index([ramoId])
+  @@map("ramo_mapping")
+}
+
+// ---------------------------------------------------------------------------
+// PÓLIZAS Y CUOTAS
+// ---------------------------------------------------------------------------
+
+model Poliza {
+  id             String         @id @default(cuid())
+  numero         String
+  companiaId     String
+  organismoId    String
+  direccionId    String?
+  ramoId         String?
+  tomador        String?
+  bienAsegurado  String?
+  vigenciaInicio DateTime?
+  vigenciaFin    DateTime?
+  facturadoHasta DateTime?      // fuente: reportes por-perfil (Aseguradora A col R "Fecha Hasta Facturado")
+  medioPago      String?        // fuente: reportes por-perfil (Aseguradora A col M "Medio de Pago")
+  importe        Decimal?       @db.Decimal(14, 2)
+  cantCuotas     Int?
+  observacionRaw String?
+  ramoCodigoOrigen String?      // código crudo de ramo (col C) para backfill sin re-leer el xlsx
+  estadoVigencia EstadoVigencia @default(VIGENTE)
+  estadoPago     EstadoPago     @default(NA)
+  deudaMonto     Decimal?       @db.Decimal(14, 2) // fuente: solapa DEUDA (autoridad de impaga)
+  deudaObs       String?
+  deudaActualizadaAl DateTime?
+  responsableId  String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  compania    Compania   @relation(fields: [companiaId], references: [id], onDelete: Cascade)
+  organismo   Organismo  @relation(fields: [organismoId], references: [id], onDelete: Cascade)
+  direccion   Direccion? @relation(fields: [direccionId], references: [id], onDelete: SetNull)
+  ramo        Ramo?      @relation(fields: [ramoId], references: [id], onDelete: SetNull)
+  responsable Usuario?   @relation(fields: [responsableId], references: [id], onDelete: SetNull)
+
+  cuotas           Cuota[]
+  seguimientos     Seguimiento[]
+  cobranzaTracking CobranzaTracking?
+  siniestros       Siniestro[]
+
+  @@unique([companiaId, numero])
+  @@index([estadoVigencia])
+  @@index([vigenciaFin])
+  @@index([organismoId])
+  @@index([responsableId])
+  @@index([ramoCodigoOrigen])
+  @@map("poliza")
+}
+
+model Cuota {
+  id          String    @id @default(cuid())
+  polizaId    String
+  nroCuota    Int
+  vencimiento DateTime
+  importe     Decimal?  @db.Decimal(14, 2)
+  pagada      Boolean   @default(false)
+  fechaPago   DateTime?
+
+  poliza Poliza @relation(fields: [polizaId], references: [id], onDelete: Cascade)
+
+  @@unique([polizaId, nroCuota])
+  @@index([polizaId])
+  @@index([vencimiento])
+  @@map("cuota")
+}
+
+// ---------------------------------------------------------------------------
+// SEGUIMIENTOS, COBRANZA Y SINIESTROS
+// ---------------------------------------------------------------------------
+
+model Seguimiento {
+  id          String          @id @default(cuid())
+  polizaId    String?
+  organismoId String?
+  usuarioId   String?
+  fecha       DateTime        @default(now())
+  canal       CanalContacto
+  tipo        TipoSeguimiento
+  texto       String // append-only, nunca se updatea
+
+  poliza    Poliza?    @relation(fields: [polizaId], references: [id], onDelete: SetNull)
+  organismo Organismo? @relation(fields: [organismoId], references: [id], onDelete: SetNull)
+  usuario   Usuario?   @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([polizaId])
+  @@index([organismoId])
+  @@index([usuarioId])
+  @@map("seguimiento")
+}
+
+model CobranzaTracking {
+  id                  String    @id @default(cuid())
+  polizaId            String    @unique
+  fechaEnvioDoc       DateTime?
+  ultimaActualizacion DateTime?
+  queSigue            String?
+  revisar             Boolean   @default(false) // derivado: > 6 días sin actualización
+
+  poliza Poliza @relation(fields: [polizaId], references: [id], onDelete: Cascade)
+
+  @@map("cobranza_tracking")
+}
+
+model Siniestro {
+  id                  String    @id @default(cuid())
+  polizaId            String
+  fechaDenuncia       DateTime?
+  estado              String?
+  descripcion         String?
+  ultimaActualizacion DateTime?
+
+  poliza Poliza @relation(fields: [polizaId], references: [id], onDelete: Cascade)
+
+  @@index([polizaId])
+  @@map("siniestro")
+}
+
+// ---------------------------------------------------------------------------
+// USUARIOS Y PROSPECTOS
+// ---------------------------------------------------------------------------
+
+model Usuario {
+  id           String     @id @default(cuid())
+  nombre       String
+  email        String     @unique
+  passwordHash String?
+  rol          RolUsuario @default(OPERADOR)
+  activo       Boolean    @default(true)
+
+  polizasResponsable Poliza[]
+  seguimientos       Seguimiento[]
+  prospectos         Prospecto[]
+
+  @@map("usuario")
+}
+
+model Prospecto {
+  id              String    @id @default(cuid())
+  vendedorId      String?
+  fechaVisita     DateTime?
+  nombre          String
+  dni             String?
+  sexo            String?
+  fechaNac        DateTime?
+  email           String?
+  celular         String?
+  reparticion     String?
+  empresa         String?
+  zona            String?
+  localidad       String?
+  contrataVida    Boolean   @default(false)
+  contrataSepelio Boolean   @default(false)
+  contrataRetiro  Boolean   @default(false)
+  seguroArma      Boolean   @default(false)
+
+  vendedor Usuario? @relation(fields: [vendedorId], references: [id], onDelete: SetNull)
+
+  @@index([vendedorId])
+  @@map("prospecto")
+}
