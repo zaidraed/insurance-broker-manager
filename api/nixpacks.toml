@@ -1,0 +1,7 @@
+# Force dev dependencies during build so the Nest CLI (devDep) can produce dist/.
+# Railway installs in production mode by default, which omits devDependencies.
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+cmds = ["npm run build"]
